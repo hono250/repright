@@ -8,7 +8,10 @@ export interface WorkoutSet {
 export class WorkoutLog {
   private sets: WorkoutSet[] = [];
 
-  logSet(exercise: string, weight: number, reps: number): void {
+  logSet(exercise: string, weight: number, reps: number, daysAgo: number = 0): void {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    
     this.sets.push({
       exercise,
       weight,
