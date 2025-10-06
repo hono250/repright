@@ -1,5 +1,5 @@
 import { GeminiLLM } from '../gemini-llm';
-import { WorkoutSet } from './workout-log';
+import { WorkoutSet, WorkoutLog } from './workout-log';
 
 export interface Recommendation {
   exercise: string;
@@ -30,7 +30,7 @@ export class ProgressionGuidance {
     console.log(response);
     console.log('====================\n');
 
-    const recommendation = this.parseRecommendation(response, exercise);
+    const recommendation = this.parseRecommendation(response, exercise, recentSets);
     this.recommendations.set(exercise, recommendation);
     
     return recommendation;
@@ -44,7 +44,7 @@ export class ProgressionGuidance {
   return PromptVariants.contextAware(exercise, sets);
 }
 
-  private parseRecommendation(response: string, exercise: string): Recommendation {
+  private parseRecommendation(response: string, exercise: string, sets: WorkoutSet[]): Recommendation {
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in LLM response');
@@ -63,7 +63,7 @@ export class ProgressionGuidance {
       throw new Error('Invalid plateauDetected');
     }
 
-    return {
+    const recommendation: Recommendation =  {
       exercise,
       suggestedWeight: parsed.suggestedWeight,
       suggestedReps: parsed.suggestedReps,
@@ -71,7 +71,42 @@ export class ProgressionGuidance {
       plateauDetected: parsed.plateauDetected,
       interventionStrategy: parsed.interventionStrategy
     };
+    // Added validators 
+    this.validateRecommendation(recommendation, sets);
+
+    return recommendation;
   }
+  private validateRecommendation(rec: Recommendation, recentSets: WorkoutSet[]): void {
+    const issues: string[] = [];
+
+    // VALIDATOR 1: Suggested weight must be reasonable (not >20% change from recent average)
+    const recentWeights = recentSets.slice(-6).map(s => s.weight);
+    const avgWeight = recentWeights.reduce((a, b) => a + b, 0) / recentWeights.length;
+    const percentChange = Math.abs((rec.suggestedWeight - avgWeight) / avgWeight) * 100;
+    
+    if (percentChange > 20) {
+        issues.push(`Suggested weight (${rec.suggestedWeight}lbs) is ${percentChange.toFixed(1)}% different from recent average (${avgWeight.toFixed(1)}lbs). Max allowed: 20%.`);
+    }
+
+    // VALIDATOR 2: Reps must be in reasonable range (1-20 for most exercises)
+    if (rec.suggestedReps < 1 || rec.suggestedReps > 20) {
+        issues.push(`Suggested reps (${rec.suggestedReps}) outside reasonable range (1-20).`);
+    }
+
+    // VALIDATOR 3: If plateau detected, intervention strategy must be appropriate
+    if (rec.plateauDetected === true) {
+        const validStrategies = ['deload', 'maintain', 'variation'];
+        const strategy = rec.interventionStrategy?.toLowerCase() || '';
+        
+        if (!validStrategies.some(s => strategy.includes(s))) {
+        issues.push(`Plateau detected but intervention strategy "${rec.interventionStrategy}" is not deload/maintain/variation.`);
+        }
+    }
+
+    if (issues.length > 0) {
+        throw new Error(`LLM recommendation validation failed:\n- ${issues.join('\n- ')}`);
+    }
+}
 }
 
 export class PromptVariants {
@@ -213,5 +248,5 @@ Return ONLY valid JSON:
   "interventionStrategy": "deload/maintain/progress/variation"
 }`;
   }
-
 }
+
