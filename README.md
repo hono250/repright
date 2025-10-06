@@ -68,4 +68,16 @@ Correctly handled all three scenarios
 
 **Issues remaining**: Performance depends heavily on LLM's training data quality regarding exercise science. May need fallback logic for edge cases or obscure exercises.
 
+## Validators 
+
+Three possible LLM failures and their corresponding validators: 
+
+1. **Extreme weight hallucinations** - The LLM might suggest 300lbs when the user works with 185lbs, or 50lbs when at 225lbs. Validator checks that suggested weight stays within 20% of recent 6-set average.
+2. **Invalid rep ranges** - The LLM could recommend 0 reps, negative values, or unrealistic 50+ rep sets. Validator enforces 1-20 rep range covering all strength training protocols.
+3. **Plateau-strategy contradiction** - The LLM might detect a plateau but still recommend "progress" as the intervention. Validator ensures that when plateauDetected is true, the interventionStrategy must be "deload", "maintain", or "variation" - never "progress".
+  
+All validators throw descriptive errors when violations occur, implemented in validateRecommendation() within progression-guidance.ts.
+
+
+
 
